@@ -57,13 +57,18 @@ class Board:
 		rle_st = Board.arr2rle(self.cells, is_shorten)
 		params2 = self.params.copy()
 		params2['b'] = Board.fracs2st(params2['b'])
-		data = {'code':self.names[0], 'name':self.names[1], 'cname':self.names[2], 'params':params2, 'cells':rle_st}
-		return data
+		return {
+			'code': self.names[0],
+			'name': self.names[1],
+			'cname': self.names[2],
+			'params': params2,
+			'cells': rle_st,
+		}
 
 	def params2st(self):
 		params2 = self.params.copy()
 		params2['b'] = '[' + Board.fracs2st(params2['b']) + ']'
-		return ','.join(['{}={}'.format(k,str(v)) for (k,v) in params2.items()])
+		return ','.join([f'{k}={str(v)}' for (k,v) in params2.items()])
 
 	def long_name(self):
 		# return ' | '.join(filter(None, self.names))
@@ -78,20 +83,23 @@ class Board:
 			0=b=.  1=o=A  1-24=A-X  25-48=pA-pX  49-72=qA-qX  241-255=yA-yO '''
 		V = np.rint(A*255).astype(int).tolist()  # [[255 255] [255 0]]
 		code_arr = [ [' .' if v==0 else ' '+chr(ord('A')+v-1) if v<25 else chr(ord('p')+(v-25)//24) + chr(ord('A')+(v-25)%24) for v in row] for row in V]  # [[yO yO] [yO .]]
-		if is_shorten:
-			rle_groups = [ [(len(list(g)),c.strip()) for c,g in itertools.groupby(row)] for row in code_arr]  # [[(2 yO)] [(1 yO) (1 .)]]
-			for row in rle_groups:
-				if row[-1][1]=='.': row.pop()  # [[(2 yO)] [(1 yO)]]
-			st = '$'.join(''.join([(str(n) if n>1 else '')+c for n,c in row]) for row in rle_groups) + '!'  # "2 yO $ 1 yO"
-		else:
-			st = '$'.join(''.join(row) for row in code_arr) + '!'
-		# print(sum(sum(r) for r in V))
-		return st
+		if not is_shorten:
+			return '$'.join(''.join(row) for row in code_arr) + '!'
+		rle_groups = [ [(len(list(g)),c.strip()) for c,g in itertools.groupby(row)] for row in code_arr]  # [[(2 yO)] [(1 yO) (1 .)]]
+		for row in rle_groups:
+			if row[-1][1]=='.': row.pop()  # [[(2 yO)] [(1 yO)]]
+		return (
+			'$'.join(
+				''.join([(str(n) if n > 1 else '') + c for n, c in row])
+				for row in rle_groups
+			)
+			+ '!'
+		)
 
 	@staticmethod
 	def rle2arr(st):
 		rle_groups = re.findall('(\d*)([p-y]?[.boA-X$])', st.rstrip('!'))  # [(2 yO)(1 $)(1 yO)]
-		code_list = sum([[c] * (1 if n=='' else int(n)) for n,c in rle_groups], [])  # [yO yO $ yO]
+		code_list = sum(([c] * (1 if n=='' else int(n)) for n,c in rle_groups), [])
 		code_arr = [l.split(',') for l in ','.join(code_list).split('$')]  # [[yO yO] [yO]]
 		V = [ [0 if c in ['.','b'] else 255 if c=='o' else ord(c)-ord('A')+1 if len(c)==1 else (ord(c[0])-ord('p'))*24+(ord(c[1])-ord('A')+25) for c in row if c!='' ] for row in code_arr]  # [[255 255] [255]]
 		# lines = st.rstrip('!').split('$')
@@ -99,9 +107,7 @@ class Board:
 		# code = [ sum([[c] * (1 if n=='' else int(n)) for n,c in row], []) for row in rle]
 		# V = [ [0 if c in ['.','b'] else 255 if c=='o' else ord(c)-ord('A')+1 if len(c)==1 else (ord(c[0])-ord('p'))*24+(ord(c[1])-ord('A')+25) for c in row ] for row in code]
 		maxlen = len(max(V, key=len))
-		A = np.array([row + [0] * (maxlen - len(row)) for row in V])/255  # [[1 1] [1 0]]
-		# print(sum(sum(r) for r in V))
-		return A
+		return np.array([row + [0] * (maxlen - len(row)) for row in V])/255
 
 	@staticmethod
 	def fracs2st(B):
@@ -123,10 +129,9 @@ class Board:
 		i2, j2 = (w2 - w)//2, (h2 - h)//2
 		# self.cells[j:j+h, i:i+w] = part.cells[0:h, 0:w]
 		vmin = np.amin(part.cells)
-		for y in range(h):
-			for x in range(w):
-				if part.cells[j2+y, i2+x] > vmin:
-					self.cells[(j1+y)%h1, (i1+x)%w1] = part.cells[j2+y, i2+x]
+		for y, x in itertools.product(range(h), range(w)):
+			if part.cells[j2+y, i2+x] > vmin:
+				self.cells[(j1+y)%h1, (i1+x)%w1] = part.cells[j2+y, i2+x]
 		return self
 
 	def transform(self, tx, mode='RZSF', is_world=False):
@@ -430,11 +435,10 @@ class Analyzer:
 		if self.series == [] or self.series[-1] != []:
 			self.series.append([])
 	def clear_segment(self):
+		if self.series != [] and self.series[-1] == []:
+			self.series.pop()
 		if self.series != []:
-			if self.series[-1] == []:
-				self.series.pop()
-			if self.series != []:
-				self.series[-1] = []
+			self.series[-1] = []
 	def invalidate_segment(self):
 		if self.series != []:
 			self.series[-1] = [[self.world.params['m'], self.world.params['s']] + [np.nan] * (len(self.STAT_HEADERS)-2)]
@@ -500,7 +504,7 @@ class Recorder:
 			https://trac.ffmpeg.org/wiki/Slideshow '''
 		self.is_recording = True
 		STATUS.append("> start " + ("saving frames" if self.is_save_frames else "recording video") + " and GIF...")
-		self.record_id = '{}-{}'.format(self.world.names[0].split('(')[0], datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+		self.record_id = f"{self.world.names[0].split('(')[0]}-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
 		self.record_seq = 1
 		self.video_path = os.path.join(self.RECORD_ROOT, self.record_id + self.VIDEO_EXT)
 		self.gif_path = os.path.join(self.RECORD_ROOT, self.record_id + self.GIF_EXT)
@@ -518,7 +522,7 @@ class Recorder:
 		self.gif = []
 
 	def save_image(self, img, filename=None):
-		self.record_id = '{}-{}'.format(self.world.names[0].split('(')[0], datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+		self.record_id = f"{self.world.names[0].split('(')[0]}-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
 		img_path = filename + self.FRAME_EXT if filename else os.path.join(self.RECORD_ROOT, self.record_id + self.FRAME_EXT)
 		img.save(img_path)
 
@@ -526,32 +530,35 @@ class Recorder:
 		if self.is_save_frames:
 			img_path = os.path.join(self.RECORD_ROOT, self.record_id, '{:03d}'.format(self.record_seq) + self.FRAME_EXT)
 			img.save(img_path)
-		else:
-			if self.video:
-				img_rgb = img.convert('RGB').tobytes()
-				self.video.stdin.write(img_rgb)
+		elif self.video:
+			img_rgb = img.convert('RGB').tobytes()
+			self.video.stdin.write(img_rgb)
 		self.gif.append(img)
 		self.record_seq += 1
 
 	def finish_record(self):
 		global STATUS
 		if self.is_save_frames:
-			STATUS.append("> frames saved to '" + self.img_dir + "/*" + self.FRAME_EXT + "'")
-			cmd = [s.replace('{input}', os.path.join(self.img_dir, '%03d'+self.FRAME_EXT)).replace('{output}', self.video_path) for s in self.ffmpeg_cmd]
+			STATUS.append(f"> frames saved to '{self.img_dir}/*{self.FRAME_EXT}'")
+			cmd = [
+				s.replace(
+					'{input}', os.path.join(self.img_dir, f'%03d{self.FRAME_EXT}')
+				).replace('{output}', self.video_path)
+				for s in self.ffmpeg_cmd
+			]
 			try:
 				subprocess.call(cmd)
 			except FileNotFoundError:
 				self.video = None
 				STATUS.append("> no ffmpeg program found!")
-		else:
-			if self.video:
-				self.video.stdin.close()
-				STATUS.append("> video saved to '" + self.video_path + "'")
+		elif self.video:
+			self.video.stdin.close()
+			STATUS.append(f"> video saved to '{self.video_path}'")
 		durations = [1000 // self.ANIM_FPS] * len(self.gif)
 		durations[-1] *= 10
 		self.gif[0].save(self.gif_path, format=self.GIF_EXT.lstrip('.'), save_all=True, append_images=self.gif[1:], loop=0, duration=durations)
 		self.gif = None
-		STATUS.append("> GIF saved to '" + self.gif_path + "'")
+		STATUS.append(f"> GIF saved to '{self.gif_path}'")
 		self.is_recording = False
 
 class Lenia:
@@ -633,14 +640,14 @@ class Lenia:
 
 	def load_animal_code(self, code, **kwargs):
 		if not code: return
-		id = self.get_animal_id(code)
-		if id: self.load_animal_id(id, **kwargs)
+		if id := self.get_animal_id(code):
+			self.load_animal_id(id, **kwargs)
 
 	def get_animal_id(self, code):
 		code_sp = code.split(':')
 		n = int(code_sp[1]) if len(code_sp)==2 else 1
 		it = (id for (id, data) in enumerate(self.animal_data) if data["code"]==code_sp[0])
-		for i in range(n):
+		for _ in range(n):
 			id = next(it, None)
 		return id
 
@@ -676,7 +683,7 @@ class Lenia:
 				if not is_auto_load:
 					self.analyzer.reset()
 			self.clear_transform()
-			for i in range(repeat):
+			for _ in range(repeat):
 				if is_random:
 					self.tx['rotate'] = np.random.random() * 360
 					h1, w1 = self.world.cells.shape
@@ -726,7 +733,7 @@ class Lenia:
 		self.world_updated()
 
 	def toggle_trace(self, small):
-		if self.trace_m == None:
+		if self.trace_m is None:
 			self.trace_m = +1
 			self.trace_s = +1
 			self.is_search_small = small
@@ -756,13 +763,13 @@ class Lenia:
 
 	def trace_params(self):
 		ds = 0.0001 if self.is_search_small else 0.001
-		dm = 0.001 if self.is_search_small else 0.01
 		if self.analyzer.is_empty or self.analyzer.is_full:
 			print('[X] ', self.world.params2st())
 			self.analyzer.invalidate_segment()
 			self.analyzer.calc_stats()
 			self.automaton.reset()
 			self.info_type = 'params'
+			dm = 0.001 if self.is_search_small else 0.01
 			if self.trace_s == +1:
 				self.trace_s = -1
 				self.backup_s.restore_to(self.world)
@@ -784,29 +791,28 @@ class Lenia:
 					data = self.trace_library[(m, s)]
 					self.world.clear()
 					self.world.add(Board.from_data(data))
-				else:
-					if self.trace_s == +2:
-						self.trace_s = -2
-						self.backup_s.restore_to(self.world)
-						self.world.params['s'] += self.trace_s//2 * ds
+				elif self.trace_s == +2:
+					self.trace_s = -2
+					self.backup_s.restore_to(self.world)
+					self.world.params['s'] += self.trace_s//2 * ds
+					self.world.params['m'] += self.trace_m * dm
+					self.roundup(self.world.params)
+				elif self.trace_s == -2:
+					if self.trace_m == +1:
+						self.trace_s = +2
+						self.trace_m = -1
+						self.backup_m.restore_to(self.world)
 						self.world.params['m'] += self.trace_m * dm
 						self.roundup(self.world.params)
-					elif self.trace_s == -2:
-						if self.trace_m == +1:
-							self.trace_m = -1
-							self.trace_s = +2
-							self.backup_m.restore_to(self.world)
-							self.world.params['m'] += self.trace_m * dm
-							self.roundup(self.world.params)
-							print('Line up' if self.trace_m == +1 else 'Line down')
-						elif self.trace_m == -1:
-							# print(len(self.trace_library))
-							# print(self.trace_library.keys())
-							# print(self.trace_library[self.backup_m.params['m'], self.backup_m.params['s']])
-							# print(len(self.analyzer.series))
-							self.finish_trace()
-							print('Trace finished')
-			# print('>> ', self.trace_m, self.trace_s)
+						print('Line up' if self.trace_m == +1 else 'Line down')
+					elif self.trace_m == -1:
+						# print(len(self.trace_library))
+						# print(self.trace_library.keys())
+						# print(self.trace_library[self.backup_m.params['m'], self.backup_m.params['s']])
+						# print(len(self.analyzer.series))
+						self.finish_trace()
+						print('Trace finished')
+				# print('>> ', self.trace_m, self.trace_s)
 		elif self.automaton.gen == 800//2:
 			self.analyzer.clear_segment()
 		elif self.automaton.gen == 1000//2:
@@ -822,7 +828,7 @@ class Lenia:
 			self.info_type = 'params'
 
 	def toggle_search(self, dir, small):
-		if self.search_dir == None:
+		if self.search_dir is None:
 			self.search_dir = dir
 			self.is_search_small = small
 			self.is_auto_center = True
@@ -836,11 +842,15 @@ class Lenia:
 	def search_params(self):
 		s = 's+' if self.is_search_small else ''
 		if self.search_dir == +1:
-			if self.analyzer.is_empty: self.key_press_internal(s+'w')
-			elif self.analyzer.is_full: self.key_press_internal(s+'q')
+			if self.analyzer.is_empty:
+				self.key_press_internal(f'{s}w')
+			elif self.analyzer.is_full:
+				self.key_press_internal(f'{s}q')
 		elif self.search_dir == -1:
-			if self.analyzer.is_empty: self.key_press_internal(s+'a')
-			elif self.analyzer.is_full: self.key_press_internal(s+'s')
+			if self.analyzer.is_empty:
+				self.key_press_internal(f'{s}a')
+			elif self.analyzer.is_full:
+				self.key_press_internal(f'{s}s')
 
 	def create_window(self):
 		self.win = tk.Tk()
@@ -924,8 +934,8 @@ class Lenia:
 			shift = self.analyzer.total_shift_idx if 'world' in markers else self.analyzer.total_shift_idx - self.analyzer.last_shift_idx 
 			A = np.roll(A, shift.astype(int), (1, 0))
 			# A = scipy.ndimage.shift(A, self.analyzer.total_shift_idx, order=0, mode='wrap')
-		if is_shift_zero and self.automaton.is_soft_clip:
-			if vmin==0: vmin = np.amin(A)
+		if is_shift_zero and self.automaton.is_soft_clip and vmin == 0:
+			vmin = np.amin(A)
 		buffer = np.uint8(np.clip(self.normalize(A, vmin, vmax), 0, 1) * 252)  # .copy(order='C')
 		self.draw_grid(buffer, markers, is_fixed='fixgrid' in markers)
 
@@ -960,9 +970,9 @@ class Lenia:
 		self.img = PIL.Image.frombuffer('L', size, np.zeros(size), 'raw', 'L', 0, 1)
 
 	def draw_grid(self, buffer, markers=[], is_fixed=False):
-		R = self.world.params['R']
-		n = R // 40 if R >= 15 else -1
 		if ('grid' in markers or 'fixgrid' in markers) and self.markers_mode in [0,1,2]:
+			R = self.world.params['R']
+			n = R // 40 if R >= 15 else -1
 			for i in range(-n, n+1):
 				sx, sy = 0, 0
 				if self.is_auto_center and not is_fixed:
@@ -981,11 +991,10 @@ class Lenia:
 			m1 = self.analyzer.m_center * R + midpoint + shift
 			ms = m1 % np.array([SIZEX, SIZEY]) - m1
 			m2, m3 = [m0 + (m1 - m0) * n * T for n in [1,2]]
-			for i in range(-1, 2):
-				for j in range(-1, 2):
-					adj = np.array([i*SIZEX, j*SIZEY]) + ms
-					draw.line(tuple((m0+adj)*PIXEL) + tuple((m3+adj)*PIXEL), fill=254, width=1)
-					[draw.ellipse(tuple((m+adj)*PIXEL-d2) + tuple((m+adj)*PIXEL+d2), fill=c) for (m,c) in [(m0,254),(m1,255),(m2,255),(m3,255)]]
+			for i, j in itertools.product(range(-1, 2), range(-1, 2)):
+				adj = np.array([i*SIZEX, j*SIZEY]) + ms
+				draw.line(tuple((m0+adj)*PIXEL) + tuple((m3+adj)*PIXEL), fill=254, width=1)
+				[draw.ellipse(tuple((m+adj)*PIXEL-d2) + tuple((m+adj)*PIXEL+d2), fill=c) for (m,c) in [(m0,254),(m1,255),(m2,255),(m3,255)]]
 		del draw
 
 	def draw_legend(self, markers=[]):

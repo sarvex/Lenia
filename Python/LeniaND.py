@@ -33,10 +33,7 @@ X_AXIS, Y_AXIS, Z_AXIS = -1, -2, -3
 
 PIXEL_2 = args.P if args.P is not None else args.D
 PIXEL_BORDER = args.B
-if args.S is not None:
-    SIZE_2 = args.S  # X, Y, Z, S...
-else:
-    SIZE_2 = [win_2 - PIXEL_2 for win_2 in args.W]
+SIZE_2 = [win_2 - PIXEL_2 for win_2 in args.W] if args.S is None else args.S
 if len(SIZE_2) < DIM:
     SIZE_2 += [SIZE_2[-1]] * (DIM-len(SIZE_2))
 # GoL 9,9,3,1   Lenia Lo 9,9,2,0  Hi 9,9,0,0   1<<9=512
@@ -92,13 +89,18 @@ class Board:
         rle_st = Board.arr2rle(self.cells, is_shorten)
         params2 = self.params.copy()
         params2['b'] = Board.fracs2st(params2['b'])
-        data = {'code':self.names[0], 'name':self.names[1], 'cname':self.names[2], 'params':params2, 'cells':rle_st}
-        return data
+        return {
+            'code': self.names[0],
+            'name': self.names[1],
+            'cname': self.names[2],
+            'params': params2,
+            'cells': rle_st,
+        }
 
     def params2st(self):
         params2 = self.params.copy()
         params2['b'] = '[' + Board.fracs2st(params2['b']) + ']'
-        return ','.join(['{}={}'.format(k,str(v)) for (k,v) in params2.items()])
+        return ','.join([f'{k}={str(v)}' for (k,v) in params2.items()])
 
     def long_name(self):
         # return ' | '.join(filter(None, self.names))
@@ -163,11 +165,11 @@ class Board:
             st = Board._recur_join_st(0, rle_groups, lambda row: [(str(n) if n>1 else '')+c for n,c in row] )  # "2 yO $ 1 yO"
         else:
             st = Board._recur_join_st(0, values, lambda row: [Board.val2ch(v) for v in row] )
-        return st + '!'
+        return f'{st}!'
 
     @staticmethod
     def rle2arr(st):
-        stacks = [[] for dim in range(DIM)]
+        stacks = [[] for _ in range(DIM)]
         last, count = '', ''
         delims = list(DIM_DELIM.values())
         st = st.rstrip('!') + DIM_DELIM[DIM-1]
@@ -185,7 +187,7 @@ class Board:
                     #print('{0}[{1}] {2}'.format(last+ch, count, [np.asarray(s).shape for s in stacks]))
                 last, count = '', ''
         A = stacks[DIM-1]
-        max_lens = [0 for dim in range(DIM)]
+        max_lens = [0 for _ in range(DIM)]
         Board._recur_get_max_lens(0, A, max_lens)
         Board._recur_cubify(0, A, max_lens)
         return np.asarray(A)
@@ -410,7 +412,7 @@ class Automaton:
         dims = [slice(0, size) for size in SIZE]
         I = list(reversed(np.mgrid[list(reversed(dims))]))  # I, J, K, L
         self.X = [(i - mid) / R for i, mid in zip(I, MID)]  # X, Y, Z, S
-        self.D = np.sqrt(sum([x**2 for x in self.X]))
+        self.D = np.sqrt(sum(x**2 for x in self.X))
         if DIM >= 3:
             Z = self.X[2]
             for d in range(3, DIM):

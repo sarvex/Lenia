@@ -16,7 +16,7 @@ def _unzip(st, is_shorten=True):
 		for c in cs:
 			v = _FromZip(c)
 			nl.append(int(v / 100 * 255))
-		if len(nl) > 0:
+		if nl:
 			V.append(nl)
 	# print(V)
 	code = [ [' .' if v==0 else ' '+chr(ord('A')+v-1) if v<25 else chr(ord('p')+(v-25)//24) + chr(ord('A')+(v-25)%24) for v in row] for row in V]

@@ -75,10 +75,23 @@ np.set_printoptions(precision=3)
 class Board:
     def __init__(self, size=[0]*DIM):
         self.names = ['', '', '']
-        self.params = [{'R':DEF_R, 'T':10, 'b':[1], 'm':0.1, 's':0.01, 'h':1, 'r':1, 'kn':1, 'gn':1} for k in KERNEL]
+        self.params = [
+            {
+                'R': DEF_R,
+                'T': 10,
+                'b': [1],
+                'm': 0.1,
+                's': 0.01,
+                'h': 1,
+                'r': 1,
+                'kn': 1,
+                'gn': 1,
+            }
+            for _ in KERNEL
+        ]
         self.set_channels()
         self.param_P = 0
-        self.cells = [np.zeros(size) for c in CHANNEL]
+        self.cells = [np.zeros(size) for _ in CHANNEL]
 
     @classmethod
     def from_values(cls, cells, params=None, names=None):
@@ -91,7 +104,7 @@ class Board:
     def set_channels(self):
         i = 0
         for c0 in CHANNEL:
-            for k in range(KN):
+            for _ in range(KN):
                 p = self.params[i]
                 if 'c' not in p:
                     p['c'] = [c0, c0]
@@ -99,7 +112,7 @@ class Board:
         for c0 in CHANNEL:
             for c1 in CHANNEL:
                 if c0 != c1:
-                    for k in range(XN):
+                    for _ in range(XN):
                         p = self.params[i]
                         if 'c' not in p:
                             p['c'] = [c0, c1]
@@ -113,22 +126,27 @@ class Board:
         params = data.get('params')
         if params is not None:
             if type(params) not in [list]:
-                params = [params for k in KERNEL]
+                params = [params for _ in KERNEL]
             self.params = [Board.data2params(p) for p in params]
             self.set_channels()
         self.cells = None
         rle = data.get('cells')
         if rle is not None:
             if type(rle) not in [list]:
-                rle = [rle for c in CHANNEL]
+                rle = [rle for _ in CHANNEL]
             self.cells = [Board.rle2cells(r) for r in rle]
         return self
 
     def to_data(self, is_shorten=True):
         rle = [Board.cells2rle(self.cells[c], is_shorten) for c in CHANNEL]
         params = [Board.params2data(self.params[k]) for k in KERNEL]
-        data = {'code':self.names[0], 'name':self.names[1], 'cname':self.names[2], 'params':params, 'cells':rle}
-        return data
+        return {
+            'code': self.names[0],
+            'name': self.names[1],
+            'cname': self.names[2],
+            'params': params,
+            'cells': rle,
+        }
 
     def params2st(self, params=None):
         if params is not None:
@@ -201,11 +219,11 @@ class Board:
             st = Board._recur_join_st(0, rle_groups, lambda row: [(str(n) if n>1 else '')+c for n,c in row] )  # "2 yO $ 1 yO"
         else:
             st = Board._recur_join_st(0, values, lambda row: [Board.val2ch(v) for v in row] )
-        return st + '!'
+        return f'{st}!'
 
     @staticmethod
     def rle2cells(st):
-        stacks = [[] for dim in range(DIM)]
+        stacks = [[] for _ in range(DIM)]
         last, count = '', ''
         delims = list(DIM_DELIM.values())
         st = st.rstrip('!') + DIM_DELIM[DIM-1]
@@ -223,7 +241,7 @@ class Board:
                     #print("{0}[{1}] {2}".format(last+ch, count, [np.asarray(s).shape for s in stacks]))
                 last, count = '', ''
         A = stacks[DIM-1]
-        max_lens = [0 for dim in range(DIM)]
+        max_lens = [0 for _ in range(DIM)]
         Board._recur_get_max_lens(0, A, max_lens)
         Board._recur_cubify(0, A, max_lens)
         return np.asarray(A)
@@ -273,7 +291,7 @@ class Board:
         # shift: s, z, y, x
         # assert self.params['R'] == part.params['R']
         if type(shift[0]) not in [list]:
-            shift = [shift for c in CHANNEL]
+            shift = [shift for _ in CHANNEL]
         for c in CHANNEL:
             self._recur_add(0, self.cells[c], part.cells[c], shift[c], is_centered)
         return self
@@ -350,11 +368,11 @@ class Automaton:
 
     def __init__(self, world):
         self.world = world
-        self.world_FFT = [np.zeros(world.cells[0].shape) for c in CHANNEL]
-        self.potential_FFT = [np.zeros(world.cells[0].shape) for k in KERNEL]
-        self.potential = [np.zeros(world.cells[0].shape) for k in KERNEL]
-        self.field = [np.zeros(world.cells[0].shape) for k in KERNEL]
-        self.change = [np.zeros(world.cells[0].shape) for c in CHANNEL]
+        self.world_FFT = [np.zeros(world.cells[0].shape) for _ in CHANNEL]
+        self.potential_FFT = [np.zeros(world.cells[0].shape) for _ in KERNEL]
+        self.potential = [np.zeros(world.cells[0].shape) for _ in KERNEL]
+        self.field = [np.zeros(world.cells[0].shape) for _ in KERNEL]
+        self.change = [np.zeros(world.cells[0].shape) for _ in CHANNEL]
         self.X = [None]*DIM
         self.D = None
         self.Z_depth = None
@@ -476,7 +494,7 @@ class Automaton:
         dims = [slice(0, size) for size in SIZE]
         I = list(reversed(np.mgrid[list(reversed(dims))]))  # I, J, K, L
         self.X = [(i - mid) / R for i, mid in zip(I, MID)]  # X, Y, Z, S
-        self.D = np.sqrt(sum([x**2 for x in self.X]))
+        self.D = np.sqrt(sum(x**2 for x in self.X))
         if DIM >= 3:
             Z = self.X[2]
             for d in range(3, DIM):
